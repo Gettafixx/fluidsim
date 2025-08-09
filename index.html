@@ -204,7 +204,7 @@
       await waitForVideoVideoWidth(vid, 3500);
       camState.textContent = 'on'; camState.style.color = '#86efac';
       // Establish initial baseline after brief warmup
-      setTimeout(()=>{ baseCtx.drawImage(vid,0,0,camW,camH); baseImg = baseCtx.getImageData(0,0,camW,camH); haveBase=true; }, 400);
+      setTimeout(()=>{ \1.save(); \1.translate(camW,0); \1.scale(-1,1); \1.drawImage(vid,0,0,camW,camH); \1.restore(); baseImg = baseCtx.getImageData(0,0,camW,camH); haveBase=true; }, 400);
       // Auto-restart if track ends
       stream.getVideoTracks().forEach(tr=>{
         tr.addEventListener('ended', ()=>{ camState.textContent='ended'; camState.style.color='#fca5a5'; });
@@ -267,9 +267,9 @@
   let rainbowHue = 0; let cyclePhase = 0;
   function motionToFluid(){
     if(!vid.videoWidth) return 0;
-    camCtx.drawImage(vid, 0,0, camW, camH);
+    \1.save(); \1.translate(camW,0); \1.scale(-1,1); \1.drawImage(vid,0,0,camW,camH); \1.restore();
     const cur = camCtx.getImageData(0,0,camW,camH);
-    if(!motionToFluid.prev){ prevCtx.drawImage(vid,0,0,camW,camH); motionToFluid.prev = prevCtx.getImageData(0,0,camW,camH); }
+    if(!motionToFluid.prev){ \1.save(); \1.translate(camW,0); \1.scale(-1,1); \1.drawImage(vid,0,0,camW,camH); \1.restore(); motionToFluid.prev = prevCtx.getImageData(0,0,camW,camH); }
     const prev = motionToFluid.prev;
 
     let activeCount = 0;
@@ -365,14 +365,14 @@
   // Controls: pause/resume & reset baseline
   controls.toggle.addEventListener('click', ()=>{ running=!running; controls.toggle.textContent = running? '⏸ Pause' : '▶️ Resume'; controls.toggle.setAttribute('aria-pressed', String(running)); if(running){ lastT=now(); } });
   let resetTimer=null, resetCount=0;
-  controls.resetBg.addEventListener('click', ()=>{ if(!vid.videoWidth){ showMsg('Camera not ready yet.', 'warn'); return; } if(resetTimer){ clearInterval(resetTimer); resetTimer=null; } resetCount=3; controls.resetBg.disabled=true; showMsg('Resetting background in '+resetCount+'…', 'warn', 4000); resetTimer=setInterval(()=>{ resetCount--; if(resetCount>0){ showMsg('Resetting background in '+resetCount+'…', 'warn', 4000); } else { clearInterval(resetTimer); resetTimer=null; baseCtx.drawImage(vid,0,0,camW,camH); baseImg=baseCtx.getImageData(0,0,camW,camH); haveBase=true; controls.resetBg.disabled=false; showMsg('Background reset ✔'); } }, 1000); });
+  controls.resetBg.addEventListener('click', ()=>{ if(!vid.videoWidth){ showMsg('Camera not ready yet.', 'warn'); return; } if(resetTimer){ clearInterval(resetTimer); resetTimer=null; } resetCount=3; controls.resetBg.disabled=true; showMsg('Resetting background in '+resetCount+'…', 'warn', 4000); resetTimer=setInterval(()=>{ resetCount--; if(resetCount>0){ showMsg('Resetting background in '+resetCount+'…', 'warn', 4000); } else { clearInterval(resetTimer); resetTimer=null; \1.save(); \1.translate(camW,0); \1.scale(-1,1); \1.drawImage(vid,0,0,camW,camH); \1.restore(); baseImg=baseCtx.getImageData(0,0,camW,camH); haveBase=true; controls.resetBg.disabled=false; showMsg('Background reset ✔'); } }, 1000); });
 
   // Resize handling
   function fitCanvas(){ const rect=simCanvas.getBoundingClientRect(); const dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1)); simCanvas.width=Math.round(rect.width*dpr); simCanvas.height=Math.round(rect.height*dpr); resizeSimulation(+controls.res.value); img = ctx.createImageData(simCanvas.width, simCanvas.height); }
   new ResizeObserver(fitCanvas).observe(simCanvas); fitCanvas();
 
   // Motion preview overlay
-  if(controls.showMotion){ const overlay=document.createElement('canvas'); overlay.width=camW; overlay.height=camH; overlay.className='off'; const octx=overlay.getContext('2d'); const show=()=>{ if(!controls.showMotion.checked){ requestAnimationFrame(show); return; } if(haveBase && baseImg && vid.videoWidth){ camCtx.drawImage(vid,0,0,camW,camH); const cur=camCtx.getImageData(0,0,camW,camH); const thr=+controls.thr.value; const d=octx.createImageData(camW,camH); for(let i=0;i<d.data.length;i+=4){ const diff=Math.abs((cur.data[i]+cur.data[i+1]+cur.data[i+2]) - (baseImg.data[i]+baseImg.data[i+1]+baseImg.data[i+2]))/3; const v=diff>thr?255:0; d.data[i]=v; d.data[i+1]=v; d.data[i+2]=v; d.data[i+3]=v?180:0; } octx.putImageData(d,0,0); const w=Math.min(220, simCanvas.width*0.25), h=w*camH/camW; ctx.save(); ctx.globalAlpha=0.9; ctx.drawImage(overlay, simCanvas.width-w-10, simCanvas.height-h-10, w, h); ctx.restore(); } requestAnimationFrame(show); }; requestAnimationFrame(show); }
+  if(controls.showMotion){ const overlay=document.createElement('canvas'); overlay.width=camW; overlay.height=camH; overlay.className='off'; const octx=overlay.getContext('2d'); const show=()=>{ if(!controls.showMotion.checked){ requestAnimationFrame(show); return; } if(haveBase && baseImg && vid.videoWidth){ \1.save(); \1.translate(camW,0); \1.scale(-1,1); \1.drawImage(vid,0,0,camW,camH); \1.restore(); const cur=camCtx.getImageData(0,0,camW,camH); const thr=+controls.thr.value; const d=octx.createImageData(camW,camH); for(let i=0;i<d.data.length;i+=4){ const diff=Math.abs((cur.data[i]+cur.data[i+1]+cur.data[i+2]) - (baseImg.data[i]+baseImg.data[i+1]+baseImg.data[i+2]))/3; const v=diff>thr?255:0; d.data[i]=v; d.data[i+1]=v; d.data[i+2]=v; d.data[i+3]=v?180:0; } octx.putImageData(d,0,0); const w=Math.min(220, simCanvas.width*0.25), h=w*camH/camW; ctx.save(); ctx.globalAlpha=0.9; ctx.drawImage(overlay, simCanvas.width-w-10, simCanvas.height-h-10, w, h); ctx.restore(); } requestAnimationFrame(show); }; requestAnimationFrame(show); }
 
   // Start
   initCamera(); requestAnimationFrame(loop);
