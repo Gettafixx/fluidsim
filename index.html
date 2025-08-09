@@ -166,7 +166,7 @@
   const prevCtx = camPrev.getContext('2d');
   const baseCtx = camBase.getContext('2d');
 
-  let haveBase=false, baseImg=null, stream=null, mirror=false;
+  let haveBase=false, baseImg=null, stream=null, mirror=true;
 
   function drawCamTo(targetCtx){
     if(!vid) return;
