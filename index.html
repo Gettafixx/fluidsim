@@ -15,13 +15,16 @@
     .dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#9ae6ff);box-shadow:0 0 0 3px rgba(122,162,255,.15),0 0 18px var(--accent)}
     h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.2px;color:#eaf1ff}
     main{display:grid;grid-template-columns:1fr 400px;gap:12px;padding:12px}
+    body.controls-hidden main{grid-template-columns:1fr}
     .panel{background:rgba(6,10,20,.55);border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 10px 35px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05)}
     #stage{position:relative;display:grid;place-items:center;overflow:hidden}
     canvas#sim{width:100%;height:100%;display:block;border-radius:16px}
     .hud{position:absolute;inset:auto 10px 10px auto;display:flex;gap:8px;align-items:center}
     .chip{display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.1);padding:.4rem .55rem;border-radius:999px;color:#dbe5ff}
     .chip small{opacity:.8}
+    .chip.btn{cursor:pointer;user-select:none}
     .controls{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+    body.controls-hidden aside.controls{display:none}
     .section{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:10px}
     .row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;padding:6px 4px}
     .row label{color:#cdd7f6;font-size:12px}
@@ -55,6 +58,8 @@
       <div class="hud">
         <div class="chip"><small>Cam:</small> <span id="camState">starting…</span></div>
         <div class="chip"><small>fps</small> <span id="fps">–</span></div>
+        <button id="toggleControls" class="chip btn" title="Hide/Show controls">🗂 Hide UI</button>
+        <button id="fullscreenBtn" class="chip btn" title="Toggle fullscreen">⛶ Fullscreen</button>
       </div>
       <video id="cam" playsinline muted></video>
       <canvas id="camWork" class="off"></canvas>
@@ -67,7 +72,7 @@
         <div class="row"><label>Simulation Resolution</label><input id="res" type="range" min="64" max="192" value="128" step="16"><span id="resV">128</span></div>
         <div class="row"><label>Viscosity</label><input id="visc" type="range" min="0" max="0.01" value="0.0008" step="0.0002"><span id="viscV">0.0008</span></div>
         <div class="row"><label>Diffusion</label><input id="diff" type="range" min="0" max="0.003" value="0.0006" step="0.0001"><span id="diffV">0.0006</span></div>
-        <div class="row"><label>Time step</label><input id="dt" type="range" min="0.005" max="0.033" value="0.030" step="0.001"><span id="dtV">0.016</span></div>
+        <div class="row"><label>Time step</label><input id="dt" type="range" min="0.005" max="0.033" value="0.016" step="0.030"><span id="dtV">0.016</span></div>
       </div>
       <div class="section">
         <div class="row"><label>Motion threshold</label><input id="thr" type="range" min="5" max="80" value="18" step="1"><span id="thrV">18</span></div>
@@ -122,6 +127,11 @@
   const fpsEl = document.getElementById('fps');
   const msg = document.getElementById('msg');
   const status = document.getElementById('status');
+  const stageEl = document.getElementById('stage');
+
+  // HUD buttons
+  const toggleControlsBtn = document.getElementById('toggleControls');
+  const fullscreenBtn = document.getElementById('fullscreenBtn');
 
   // Controls
   const $ = id => document.getElementById(id);
@@ -170,20 +180,11 @@
 
   function drawCamTo(targetCtx){
     if(!vid) return;
-    if(mirror){
-      targetCtx.save();
-      targetCtx.translate(camW,0);
-      targetCtx.scale(-1,1);
-      targetCtx.drawImage(vid,0,0,camW,camH);
-      targetCtx.restore();
-    } else {
-      targetCtx.drawImage(vid,0,0,camW,camH);
-    }
+    if(mirror){ targetCtx.save(); targetCtx.translate(camW,0); targetCtx.scale(-1,1); targetCtx.drawImage(vid,0,0,camW,camH); targetCtx.restore(); }
+    else { targetCtx.drawImage(vid,0,0,camW,camH); }
   }
 
-  async function stopCamera(){
-    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
-  }
+  async function stopCamera(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } }
 
   function waitForVideoVideoWidth(vid, timeout=2500){
     return new Promise((resolve, reject)=>{
@@ -202,9 +203,7 @@
       { video: true, audio:false }
     ];
     let lastErr;
-    for(const c of trials){
-      try { return await navigator.mediaDevices.getUserMedia(c); } catch(e){ lastErr=e; }
-    }
+    for(const c of trials){ try { return await navigator.mediaDevices.getUserMedia(c); } catch(e){ lastErr=e; } }
     throw lastErr || new Error('getUserMedia failed');
   }
 
@@ -213,62 +212,39 @@
       camState.textContent = 'starting…'; camState.style.color = '#fde68a';
       await stopCamera();
       stream = await getStreamWithFallbacks();
-      vid.srcObject = stream;
-      await vid.play().catch(()=>{});
-      await waitForVideoVideoWidth(vid, 3500);
+      vid.srcObject = stream; await vid.play().catch(()=>{}); await waitForVideoVideoWidth(vid, 3500);
       camState.textContent = 'on'; camState.style.color = '#86efac';
-      // Establish initial baseline after brief warmup
       setTimeout(()=>{ drawCamTo(baseCtx); baseImg = baseCtx.getImageData(0,0,camW,camH); haveBase=true; }, 400);
       stream.getVideoTracks().forEach(tr=>{
         tr.addEventListener('ended', ()=>{ camState.textContent='ended'; camState.style.color='#fca5a5'; });
         tr.addEventListener('mute', ()=>{ camState.textContent='muted'; camState.style.color='#fca5a5'; });
         tr.addEventListener('unmute', ()=>{ camState.textContent='on'; camState.style.color='#86efac'; });
       });
-    }catch(err){
-      console.error('Camera error', err);
-      camState.textContent = 'blocked'; camState.style.color = '#fca5a5';
-      showMsg('Camera failed to start. Try clicking “Start camera” or check another app is not using it.', 'warn', 5000);
-    }
+    }catch(err){ console.error('Camera error', err); camState.textContent = 'blocked'; camState.style.color = '#fca5a5'; showMsg('Camera failed to start. Try clicking “Start camera”.', 'warn', 5000); }
   }
 
   controls.startCam.addEventListener('click', ()=>{ initCamera(); });
-  controls.toggleMirror.addEventListener('click', ()=>{ mirror=!mirror; controls.toggleMirror.textContent = mirror ? '🪞 Mirror: On' : '🪞 Mirror: Off'; showMsg(mirror? 'Camera mirrored' : 'Camera normal'); if(haveBase){ // recapture a mirrored baseline to keep detection consistent
-      drawCamTo(baseCtx); baseImg = baseCtx.getImageData(0,0,camW,camH);
-    }
-  });
+  controls.toggleMirror.addEventListener('click', ()=>{ mirror=!mirror; controls.toggleMirror.textContent = mirror ? '🪞 Mirror: On' : '🪞 Mirror: Off'; showMsg(mirror? 'Camera mirrored' : 'Camera normal'); if(haveBase){ drawCamTo(baseCtx); baseImg = baseCtx.getImageData(0,0,camW,camH); } });
 
   function showMsg(t, kind='ok', timeout=2400){
     msg.textContent = t; msg.style.display='block';
     msg.style.background = kind==='ok'? 'rgba(34,197,94,.08)' : kind==='warn' ? 'rgba(245,158,11,.09)' : 'rgba(239,68,68,.10)';
     msg.style.borderColor = kind==='ok'? 'rgba(34,197,94,.28)' : kind==='warn' ? 'rgba(245,158,11,.3)' : 'rgba(239,68,68,.35)';
-    clearTimeout(showMsg._t);
-    showMsg._t = setTimeout(()=> msg.style.display='none', timeout);
+    clearTimeout(showMsg._t); showMsg._t = setTimeout(()=> msg.style.display='none', timeout);
   }
 
   // ----- Fluid (Stable Fluids, CPU)
   let NX=128, NY=Math.round(NX*(simCanvas.height/simCanvas.width));
   let iterP = 16, iterD = 8;
-  let dt = +controls.dt.value;
-  let diff = +controls.diff.value; let visc = +controls.visc.value;
-
+  let dt = +controls.dt.value; let diff = +controls.diff.value; let visc = +controls.visc.value;
   function idx(x,y){ return x + (NX+2)*y; }
   function makeField(){ return new Float32Array((NX+2)*(NY+2)); }
-
   let u,v,u0,v0, r,g,b, r0,g0,b0, p, div;
   function alloc(){ u=makeField(); v=makeField(); u0=makeField(); v0=makeField(); r=makeField(); g=makeField(); b=makeField(); r0=makeField(); g0=makeField(); b0=makeField(); p=makeField(); div=makeField(); }
-
-  function set_bnd(b, x){
-    for(let i=1;i<=NX;i++){ x[idx(i,0)]   = b===2? -x[idx(i,1)] : x[idx(i,1)]; x[idx(i,NY+1)]= b===2? -x[idx(i,NY)] : x[idx(i,NY)]; }
-    for(let j=1;j<=NY;j++){ x[idx(0,j)]   = b===1? -x[idx(1,j)] : x[idx(1,j)]; x[idx(NX+1,j)]= b===1? -x[idx(NX,j)] : x[idx(NX,j)]; }
-    x[idx(0,0)]           = 0.5*(x[idx(1,0)]     + x[idx(0,1)]);
-    x[idx(0,NY+1)]        = 0.5*(x[idx(1,NY+1)]  + x[idx(0,NY)]);
-    x[idx(NX+1,0)]        = 0.5*(x[idx(NX,0)]    + x[idx(NX+1,1)]);
-    x[idx(NX+1,NY+1)]     = 0.5*(x[idx(NX,NY+1)] + x[idx(NX+1,NY)]);
-  }
-
+  function set_bnd(b, x){ for(let i=1;i<=NX;i++){ x[idx(i,0)]   = b===2? -x[idx(i,1)] : x[idx(i,1)]; x[idx(i,NY+1)]= b===2? -x[idx(i,NY)] : x[idx(i,NY)]; } for(let j=1;j<=NY;j++){ x[idx(0,j)]   = b===1? -x[idx(1,j)] : x[idx(1,j)]; x[idx(NX+1,j)]= b===1? -x[idx(NX,j)] : x[idx(NX,j)]; } x[idx(0,0)]           = 0.5*(x[idx(1,0)]     + x[idx(0,1)]); x[idx(0,NY+1)]        = 0.5*(x[idx(1,NY+1)]  + x[idx(0,NY)]); x[idx(NX+1,0)]        = 0.5*(x[idx(NX,0)]    + x[idx(NX+1,1)]); x[idx(NX+1,NY+1)]     = 0.5*(x[idx(NX,NY+1)] + x[idx(NX+1,NY)]); }
   function lin_solve(b, x, x0, a, c, iters){ const cRecip = 1.0/c; for(let k=0;k<iters;k++){ for(let j=1;j<=NY;j++){ for(let i=1;i<=NX;i++){ x[idx(i,j)] = (x0[idx(i,j)] + a*(x[idx(i-1,j)] + x[idx(i+1,j)] + x[idx(i,j-1)] + x[idx(i,j+1)])) * cRecip; } } set_bnd(b,x); } }
   function diffuse(b, x, x0, diff, dt, iters){ const a = dt*diff*NX*NY; lin_solve(b,x,x0,a,1+4*a,iters); }
-  function advect(b, d, d0, u, v, dt){ const dt0x = dt*NX, dt0y = dt*NY; for(let j=1;j<=NY;j++){ for(let i=1;i<=NX;i++){ let x = i - dt0x * u[idx(i,j)]; let y = j - dt0y * v[idx(i,j)]; if(x<0.5) x=0.5; if(x>NX+0.5) x=NX+0.5; if(y<0.5) y=0.5; if(y>NY+0.5) y=NY+0.5; const i0 = Math.floor(x), i1 = i0+1; const j0 = Math.floor(y), j1 = j0+1; const s1 = x - i0, s0 = 1 - s1; const t1 = y - j0, t0 = 1 - t1; d[idx(i,j)] = s0*(t0*d0[idx(i0,j0)] + t1*d0[idx(i0,j1)]) + s1*(t0*d0[idx(i1,j0)] + t1*d0[idx(i1,j1)]); } } set_bnd(b,d); }
+  function advect(b, d, d0, u, v, dt){ const dt0x = dt*NX, dt0y = dt*NY; for(let j=1;j<=NY;j++){ for(let i=1;i<=NX;i++){ let x = i - dt0x * u[idx(i,j)]; let y = j - dt0y * v[idx(i,j)]; if(x<0.5) x=0.5; if(x>NX+0.5) x=NX+0.5; if(y<0.5) y=0.5; if(y>NY+0.5) y=NY+0.5; const i0 = Math.floor(x), i1 = i0+1; const j0 = Math.floor(y), j1 = j0+1; const s1 = x - i0, s0 = 1 - s1; const t1 = y - j0, t0 = 1 - t1; d[idx(i,j)] = s0*(t0*d0[idx(i0,j0)] + t1*d0[idx(i0,j1)]) + s1*(t0*d0[idx(i1,j0)] + t1*d0[idx(i1,j1)]; } } set_bnd(b,d); }
   function project(u,v,p,div){ const h = 1.0/Math.max(NX,NY); for(let j=1;j<=NY;j++){ for(let i=1;i<=NX;i++){ div[idx(i,j)] = -0.5*h*( u[idx(i+1,j)] - u[idx(i-1,j)] + v[idx(i,j+1)] - v[idx(i,j-1)] ); p[idx(i,j)] = 0; } } set_bnd(0,div); set_bnd(0,p); lin_solve(0,p,div,1,4,iterP); for(let j=1;j<=NY;j++){ for(let i=1;i<=NX;i++){ u[idx(i,j)] -= 0.5*(p[idx(i+1,j)] - p[idx(i-1,j)]) / h; v[idx(i,j)] -= 0.5*(p[idx(i,j+1)] - p[idx(i,j-1)]) / h; } } set_bnd(1,u); set_bnd(2,v); }
   function vel_step(u,v,u0,v0,visc,dt){ for(let k=0;k<u.length;k++){ u[k]+=dt*u0[k]; v[k]+=dt*v0[k]; u0[k]=0; v0[k]=0; } diffuse(1,u0,u,visc,dt,iterD); diffuse(2,v0,v,visc,dt,iterD); project(u0,v0,p,div); advect(1,u,u0,u0,v0,dt); advect(2,v,v0,u0,v0,dt); project(u,v,p,div); }
   function dens_step(d,d0,u,v,diff,dt){ for(let k=0;k<d.length;k++){ d[k]+=dt*d0[k]; d0[k]=0; } diffuse(0,d0,d,diff,dt,iterD); advect(0,d,d0,u,v,dt); }
@@ -278,7 +254,7 @@
 
   // ----- Rendering
   let img = ctx.createImageData(simCanvas.width, simCanvas.height);
-  function render(){ const W = simCanvas.width, H = simCanvas.height; const sx = NX/(W), sy = NY/(H); const data = img.data; let p = 0; for(let y=0;y<H;y++){ const gy = 1 + (y+0.5)*sy; const j0 = Math.floor(gy), j1 = Math.min(NY, j0+1), ty = gy - j0, tty = 1-ty; for(let x=0;x<W;x++){ const gx = 1 + (x+0.5)*sx; const i0 = Math.floor(gx), i1 = Math.min(NX, i0+1), tx = gx - i0, ttx = 1-tx; const i00 = idx(i0,j0), i01 = idx(i0,j1), i10 = idx(i1,j0), i11 = idx(i1,j1); const rr = ttx*(tty*r[i00] + ty*r[i01]) + tx*(tty*r[i10] + ty*r[i11]); const gg = ttx*(tty*g[i00] + ty*g[i01]) + tx*(tty*g[i10] + ty*g[i11]); const bb = ttx*(tty*b[i00] + ty*b[i01]) + tx*(tty*b[i10] + ty*b[i11]); data[p++] = (Math.max(0,Math.min(255,rr*255))|0); data[p++] = (Math.max(0,Math.min(255,gg*255))|0); data[p++] = (Math.max(0,Math.min(255,bb*255))|0); data[p++] = 255; } } ctx.putImageData(img,0,0); }
+  function render(){ const W = simCanvas.width, H = simCanvas.height; const sx = NX/(W), sy = NY/(H); const data = img.data; let p = 0; for(let y=0;y<H;y++){ const gy = 1 + (y+0.5)*sy; const j0 = Math.floor(gy), j1 = Math.min(NY, j0+1), ty = gy - j0, tty = 1-ty; for(let x=0;x<W;x++){ const gx = 1 + (x+0.5)*sx; const i0 = Math.floor(gx), i1 = Math.min(NX, i0+1), tx = gx - i0, ttx = 1-tx; const i00 = idx(i0,j0), i01 = idx(i0,j1), i10 = idx(i1,j0), i11 = idx(i1,j1); const rr = ttx*(tty*r[i00] + ty*r[i01]) + tx*(tty*r[i10] + ty*r[i11]); const gg = ttx*(tty*g[i00] + ty*g[i01]) + tx*(tty[g?i10:i10] + ty*g[i11]); const bb = ttx*(tty*b[i00] + ty*b[i01]) + tx*(tty*b[i10] + ty*b[i11]); data[p++] = (Math.max(0,Math.min(255,rr*255))|0); data[p++] = (Math.max(0,Math.min(255,gg*255))|0); data[p++] = (Math.max(0,Math.min(255,bb*255))|0); data[p++] = 255; } } ctx.putImageData(img,0,0); }
 
   // ----- Motion → Forces & Ink
   let rainbowHue = 0; let cyclePhase = 0;
@@ -390,6 +366,22 @@
 
   // Motion preview overlay
   if(controls.showMotion){ const overlay=document.createElement('canvas'); overlay.width=camW; overlay.height=camH; overlay.className='off'; const octx=overlay.getContext('2d'); const show=()=>{ if(!controls.showMotion.checked){ requestAnimationFrame(show); return; } if(haveBase && baseImg && vid.videoWidth){ drawCamTo(camCtx); const cur=camCtx.getImageData(0,0,camW,camH); const thr=+controls.thr.value; const d=octx.createImageData(camW,camH); for(let i=0;i<d.data.length;i+=4){ const diff=Math.abs((cur.data[i]+cur.data[i+1]+cur.data[i+2]) - (baseImg.data[i]+baseImg.data[i+1]+baseImg.data[i+2]))/3; const v=diff>thr?255:0; d.data[i]=v; d.data[i+1]=v; d.data[i+2]=v; d.data[i+3]=v?180:0; } octx.putImageData(d,0,0); const w=Math.min(220, simCanvas.width*0.25), h=w*camH/camW; ctx.save(); ctx.globalAlpha=0.9; ctx.drawImage(overlay, simCanvas.width-w-10, simCanvas.height-h-10, w, h); ctx.restore(); } requestAnimationFrame(show); }; requestAnimationFrame(show); }
+
+  // HUD buttons behavior
+  toggleControlsBtn.addEventListener('click', ()=>{ const hidden = document.body.classList.toggle('controls-hidden'); toggleControlsBtn.textContent = hidden ? '🗂 Show UI' : '🗂 Hide UI'; fitCanvas(); });
+
+  async function toggleFullscreen(){
+    try{
+      if(!document.fullscreenElement){
+        if(stageEl.requestFullscreen){ await stageEl.requestFullscreen({ navigationUI: 'hide' }); }
+        else if(document.documentElement.requestFullscreen){ await document.documentElement.requestFullscreen(); }
+      } else { await document.exitFullscreen(); }
+    } catch(e){ showMsg('Fullscreen not available in this browser/page.', 'warn'); }
+  }
+  fullscreenBtn.addEventListener('click', toggleFullscreen);
+  document.addEventListener('fullscreenchange', ()=>{
+    fullscreenBtn.textContent = document.fullscreenElement ? '⤢ Exit FS' : '⛶ Fullscreen';
+  });
 
   // Start
   initCamera(); requestAnimationFrame(loop);
