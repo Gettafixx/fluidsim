@@ -14,7 +14,7 @@
     header .title{display:flex;gap:.75rem;align-items:center}
     .dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#9ae6ff);box-shadow:0 0 0 3px rgba(122,162,255,.15),0 0 18px var(--accent)}
     h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.2px;color:#eaf1ff}
-    main{display:grid;grid-template-columns:1fr 380px;gap:12px;padding:12px}
+    main{display:grid;grid-template-columns:1fr 400px;gap:12px;padding:12px}
     .panel{background:rgba(6,10,20,.55);border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 10px 35px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05)}
     #stage{position:relative;display:grid;place-items:center;overflow:hidden}
     canvas#sim{width:100%;height:100%;display:block;border-radius:16px}
@@ -26,8 +26,7 @@
     .row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;padding:6px 4px}
     .row label{color:#cdd7f6;font-size:12px}
     .row input[type="range"]{width:180px}
-    .btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
-    .btns-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:4px}
+    .btns-4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:4px}
     button{padding:.6rem .8rem;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));color:#eaf1ff;cursor:pointer;transition:.2s transform,.2s background}
     button:hover{transform:translateY(-1px);background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.04))}
     button:disabled{opacity:.5;cursor:not-allowed}
@@ -76,10 +75,11 @@
         <div class="row"><label>Ink intensity</label><input id="ink" type="range" min="5" max="300" value="160" step="5"><span id="inkV">160</span></div>
         <div class="row"><label>Fade time (s)</label><input id="fade" type="range" min="0.5" max="5" value="2" step="0.1"><span id="fadeV">2</span></div>
         <div class="row"><label>Show motion preview</label><input id="showMotion" type="checkbox" checked><span></span></div>
-        <div class="btns-3">
+        <div class="btns-4">
           <button id="toggle" class="accent" aria-pressed="true">⏸ Pause</button>
           <button id="resetBg" class="danger" title="Reset motion baseline in 3 seconds">🔄 Reset background</button>
           <button id="startCam">📷 Start camera</button>
+          <button id="toggleMirror">🪞 Mirror: Off</button>
         </div>
         <div id="msg" class="notice" style="display:none"></div>
       </div>
@@ -97,7 +97,7 @@
         <div class="row color-rows"><label>Color 1</label><input id="color1" type="color" value="#66aaff" /></div>
         <div class="row color-rows"><label>Color 2</label><input id="color2" type="color" value="#ff66aa" /></div>
       </div>
-      <small style="opacity:.7">Tip: strong motions create stronger currents. Click “Reset background” if lighting or the scene changed. Use “Start camera” if the feed stalls.</small>
+      <small style="opacity:.7">Tip: strong motions create stronger currents. Click “Reset background” if lighting or the scene changed. Use “Start camera” if the feed stalls. Use “Mirror” to flip the camera horizontally.</small>
     </aside>
   </main>
 
@@ -138,6 +138,7 @@
     toggle: $('toggle'),
     resetBg: $('resetBg'),
     startCam: $('startCam'),
+    toggleMirror: $('toggleMirror'),
     pointerInk: $('pointerInk'),
     colorMode: $('colorMode'),
     color1: $('color1'),
@@ -165,7 +166,20 @@
   const prevCtx = camPrev.getContext('2d');
   const baseCtx = camBase.getContext('2d');
 
-  let haveBase=false, baseImg=null, stream=null;
+  let haveBase=false, baseImg=null, stream=null, mirror=false;
+
+  function drawCamTo(targetCtx){
+    if(!vid) return;
+    if(mirror){
+      targetCtx.save();
+      targetCtx.translate(camW,0);
+      targetCtx.scale(-1,1);
+      targetCtx.drawImage(vid,0,0,camW,camH);
+      targetCtx.restore();
+    } else {
+      targetCtx.drawImage(vid,0,0,camW,camH);
+    }
+  }
 
   async function stopCamera(){
     if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
@@ -204,8 +218,7 @@
       await waitForVideoVideoWidth(vid, 3500);
       camState.textContent = 'on'; camState.style.color = '#86efac';
       // Establish initial baseline after brief warmup
-      setTimeout(()=>{ \1.save(); \1.translate(camW,0); \1.scale(-1,1); \1.drawImage(vid,0,0,camW,camH); \1.restore(); baseImg = baseCtx.getImageData(0,0,camW,camH); haveBase=true; }, 400);
-      // Auto-restart if track ends
+      setTimeout(()=>{ drawCamTo(baseCtx); baseImg = baseCtx.getImageData(0,0,camW,camH); haveBase=true; }, 400);
       stream.getVideoTracks().forEach(tr=>{
         tr.addEventListener('ended', ()=>{ camState.textContent='ended'; camState.style.color='#fca5a5'; });
         tr.addEventListener('mute', ()=>{ camState.textContent='muted'; camState.style.color='#fca5a5'; });
@@ -219,6 +232,10 @@
   }
 
   controls.startCam.addEventListener('click', ()=>{ initCamera(); });
+  controls.toggleMirror.addEventListener('click', ()=>{ mirror=!mirror; controls.toggleMirror.textContent = mirror ? '🪞 Mirror: On' : '🪞 Mirror: Off'; showMsg(mirror? 'Camera mirrored' : 'Camera normal'); if(haveBase){ // recapture a mirrored baseline to keep detection consistent
+      drawCamTo(baseCtx); baseImg = baseCtx.getImageData(0,0,camW,camH);
+    }
+  });
 
   function showMsg(t, kind='ok', timeout=2400){
     msg.textContent = t; msg.style.display='block';
@@ -267,9 +284,9 @@
   let rainbowHue = 0; let cyclePhase = 0;
   function motionToFluid(){
     if(!vid.videoWidth) return 0;
-    \1.save(); \1.translate(camW,0); \1.scale(-1,1); \1.drawImage(vid,0,0,camW,camH); \1.restore();
+    drawCamTo(camCtx);
     const cur = camCtx.getImageData(0,0,camW,camH);
-    if(!motionToFluid.prev){ \1.save(); \1.translate(camW,0); \1.scale(-1,1); \1.drawImage(vid,0,0,camW,camH); \1.restore(); motionToFluid.prev = prevCtx.getImageData(0,0,camW,camH); }
+    if(!motionToFluid.prev){ drawCamTo(prevCtx); motionToFluid.prev = prevCtx.getImageData(0,0,camW,camH); }
     const prev = motionToFluid.prev;
 
     let activeCount = 0;
@@ -365,14 +382,14 @@
   // Controls: pause/resume & reset baseline
   controls.toggle.addEventListener('click', ()=>{ running=!running; controls.toggle.textContent = running? '⏸ Pause' : '▶️ Resume'; controls.toggle.setAttribute('aria-pressed', String(running)); if(running){ lastT=now(); } });
   let resetTimer=null, resetCount=0;
-  controls.resetBg.addEventListener('click', ()=>{ if(!vid.videoWidth){ showMsg('Camera not ready yet.', 'warn'); return; } if(resetTimer){ clearInterval(resetTimer); resetTimer=null; } resetCount=3; controls.resetBg.disabled=true; showMsg('Resetting background in '+resetCount+'…', 'warn', 4000); resetTimer=setInterval(()=>{ resetCount--; if(resetCount>0){ showMsg('Resetting background in '+resetCount+'…', 'warn', 4000); } else { clearInterval(resetTimer); resetTimer=null; \1.save(); \1.translate(camW,0); \1.scale(-1,1); \1.drawImage(vid,0,0,camW,camH); \1.restore(); baseImg=baseCtx.getImageData(0,0,camW,camH); haveBase=true; controls.resetBg.disabled=false; showMsg('Background reset ✔'); } }, 1000); });
+  controls.resetBg.addEventListener('click', ()=>{ if(!vid.videoWidth){ showMsg('Camera not ready yet.', 'warn'); return; } if(resetTimer){ clearInterval(resetTimer); resetTimer=null; } resetCount=3; controls.resetBg.disabled=true; showMsg('Resetting background in '+resetCount+'…', 'warn', 4000); resetTimer=setInterval(()=>{ resetCount--; if(resetCount>0){ showMsg('Resetting background in '+resetCount+'…', 'warn', 4000); } else { clearInterval(resetTimer); resetTimer=null; drawCamTo(baseCtx); baseImg=baseCtx.getImageData(0,0,camW,camH); haveBase=true; controls.resetBg.disabled=false; showMsg('Background reset ✔'); } }, 1000); });
 
   // Resize handling
   function fitCanvas(){ const rect=simCanvas.getBoundingClientRect(); const dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1)); simCanvas.width=Math.round(rect.width*dpr); simCanvas.height=Math.round(rect.height*dpr); resizeSimulation(+controls.res.value); img = ctx.createImageData(simCanvas.width, simCanvas.height); }
   new ResizeObserver(fitCanvas).observe(simCanvas); fitCanvas();
 
   // Motion preview overlay
-  if(controls.showMotion){ const overlay=document.createElement('canvas'); overlay.width=camW; overlay.height=camH; overlay.className='off'; const octx=overlay.getContext('2d'); const show=()=>{ if(!controls.showMotion.checked){ requestAnimationFrame(show); return; } if(haveBase && baseImg && vid.videoWidth){ \1.save(); \1.translate(camW,0); \1.scale(-1,1); \1.drawImage(vid,0,0,camW,camH); \1.restore(); const cur=camCtx.getImageData(0,0,camW,camH); const thr=+controls.thr.value; const d=octx.createImageData(camW,camH); for(let i=0;i<d.data.length;i+=4){ const diff=Math.abs((cur.data[i]+cur.data[i+1]+cur.data[i+2]) - (baseImg.data[i]+baseImg.data[i+1]+baseImg.data[i+2]))/3; const v=diff>thr?255:0; d.data[i]=v; d.data[i+1]=v; d.data[i+2]=v; d.data[i+3]=v?180:0; } octx.putImageData(d,0,0); const w=Math.min(220, simCanvas.width*0.25), h=w*camH/camW; ctx.save(); ctx.globalAlpha=0.9; ctx.drawImage(overlay, simCanvas.width-w-10, simCanvas.height-h-10, w, h); ctx.restore(); } requestAnimationFrame(show); }; requestAnimationFrame(show); }
+  if(controls.showMotion){ const overlay=document.createElement('canvas'); overlay.width=camW; overlay.height=camH; overlay.className='off'; const octx=overlay.getContext('2d'); const show=()=>{ if(!controls.showMotion.checked){ requestAnimationFrame(show); return; } if(haveBase && baseImg && vid.videoWidth){ drawCamTo(camCtx); const cur=camCtx.getImageData(0,0,camW,camH); const thr=+controls.thr.value; const d=octx.createImageData(camW,camH); for(let i=0;i<d.data.length;i+=4){ const diff=Math.abs((cur.data[i]+cur.data[i+1]+cur.data[i+2]) - (baseImg.data[i]+baseImg.data[i+1]+baseImg.data[i+2]))/3; const v=diff>thr?255:0; d.data[i]=v; d.data[i+1]=v; d.data[i+2]=v; d.data[i+3]=v?180:0; } octx.putImageData(d,0,0); const w=Math.min(220, simCanvas.width*0.25), h=w*camH/camW; ctx.save(); ctx.globalAlpha=0.9; ctx.drawImage(overlay, simCanvas.width-w-10, simCanvas.height-h-10, w, h); ctx.restore(); } requestAnimationFrame(show); }; requestAnimationFrame(show); }
 
   // Start
   initCamera(); requestAnimationFrame(loop);
